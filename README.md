@@ -32,13 +32,17 @@ RequirementWhere to get itWindows 10 or 11—Python 3.10 or newerpython.org — 
 
 ## Installation
 
-Step 1 — Download your files
+---
+
+## Step 1 — Download your files
 Click the green Code button at the top of this page → Download ZIP
 Unzip it. Create a folder on your Desktop called:
 Zacharia Lead Agent
 Place all the files from the ZIP inside it.
 
-Step 2 — Get ChromeDriver
+---
+
+## Step 2 — Get ChromeDriver
 Open Chrome and go to chrome://settings/help
 Note your version number — e.g. 147.0.7727.102
 Go to: googlechromelabs.github.io/chrome-for-testing
@@ -48,20 +52,28 @@ Put chromedriver.exe inside your Zacharia Lead Agent folder.
 ⚠️ The version must match exactly. If Chrome updates, you'll need to
 update ChromeDriver too.
 
-Step 3 — Add your credentials file
+---
+
+## Step 3 — Add your credentials file
 Your access email has google_credentials.json attached to it.
 Place it inside your Zacharia Lead Agent folder.
 
-Step 4 — Open Command Prompt in your folder
+---
+
+## Step 4 — Open Command Prompt in your folder
 Open your Zacharia Lead Agent folder in Windows Explorer.
 Hold Shift + right-click anywhere inside the folder.
 Click "Open PowerShell window here" or "Open Command window here".
 
-Step 5 — Run the setup wizard
+---
+
+## Step 5 — Run the setup wizard
 python zack_setup.py
 The wizard will ask you for:
 
-Your licence key
+---
+
+## Your licence key
 Your name, title, company, LinkedIn URL
 Your Google Sheet ID and Groq API key
 Your target audience and regions
@@ -72,7 +84,9 @@ Phrases you never use — Zack hard-bans these
 
 Takes 2 minutes. Your personalised zack_config.py is created automatically.
 
-Step 6 — Run the installer
+---
+
+## Step 6 — Run the installer
 Right-click zack_install.bat → Run as administrator
 Wait for it to finish. You will see:
 [1/5] Python found. Installing required packages...
@@ -81,10 +95,14 @@ Wait for it to finish. You will see:
 [4/5] Creating desktop shortcuts...
 [5/5] Scheduling automatic runs...
 
-INSTALLATION COMPLETE
+---
+
+## INSTALLATION COMPLETE
 Desktop shortcuts appear automatically.
 
-Step 7 — Add people to your engagement list
+---
+
+## Step 7 — Add people to your engagement list
 Open your Google Sheet.
 Find the tab called "Zacharia Engagement List"
 (Zack creates this tab automatically on first run if it doesn't exist).
@@ -93,7 +111,9 @@ Column A — NameColumn B — LinkedIn URLColumn C — NotesAlex Hormozihttps://
 Add anyone whose posts you want Zack to comment on.
 The note in Column C helps Zack write better-targeted comments.
 
-Step 8 — Run Zack
+---
+
+## Step 8 — Run Zack
 Double-click Zack – Engage (Comments) on your Desktop.
 Chrome opens. Log into LinkedIn if prompted.
 Zack detects your session and starts running automatically.
@@ -110,7 +130,9 @@ You will see output like this:
    → Posting comment...
    ✅ Posted (1/25)
 
-Automatic schedule
+---
+
+## Automatic schedule
 After installation, Zack runs automatically on weekdays:
 TimeWhat happens7:00 AMZack comments on your engagement list posts1:00 PMZack runs again for posts published since morning
 LinkedIn must be logged in on Chrome for the scheduled runs to work.
@@ -159,7 +181,9 @@ Updates when LinkedIn changes break selectors
 Your Telegram invite link is in your access email.
 The link is private — please do not share it publicly.
 
-The full Zack suite
+---
+
+## The full Zack suite
 The commenting agent is the free community tier.
 The full system includes:
 
@@ -169,7 +193,9 @@ Connections scanner and messaging
 Reply agent — reads threads and continues conversations
 Reignite agent — follows up cold conversations after 7 days
 
-Contact Clinton Okhai on LinkedIn to discuss the full suite.
+---
+
+## Contact Clinton Okhai on LinkedIn to discuss the full suite.
 
 Built by
 Clinton Okhai
@@ -177,4 +203,6 @@ Founder, Mathetes — Venture Architecture for African Founders
 LinkedIn ·
 Newsletter — The Founder's Odyssey
 
-Zack.ai — your LinkedIn outreach engine.
+---
+
+## Zack.ai — your LinkedIn outreach engine.
