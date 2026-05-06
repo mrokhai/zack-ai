@@ -73,8 +73,9 @@ Click "Open PowerShell window here" or "Open Command window here".
 
 **Step 5 — Run the setup wizard**
 
+---
 
-**python zack_setup.py**
+## python zack_setup.py
 
 Enter your licence key when asked.
 Answer the questions. Takes 2 minutes.
