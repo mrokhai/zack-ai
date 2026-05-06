@@ -1,0 +1,539 @@
+"""
+Zack.ai — Commenting Agent Setup Wizard
+=========================================
+Run this once to build your personalised zack_config.py.
+
+  python zack_setup.py
+
+Takes 2 minutes. Generates zack_config.py in this folder.
+Powers zacharia_engage.py (commenting agent) only.
+"""
+
+import os, sys, json, textwrap, datetime
+
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
+
+# ── Update these before distributing ─────────────────────────────────────────
+TELEGRAM_LINK        = "https://t.me/+YOUR_INVITE_LINK_HERE"
+REGISTRATION_WEBHOOK = ""  # paste your Zapier/Make webhook URL here
+
+# Valid licence keys — add new ones as you approve users
+# Format: "ZACK-XXXX-XXXX" — you generate these and email them to approved users
+VALID_KEYS = [
+    "ZACK-2025-BETA",
+    "ZACK-2025-LAUNCH",
+    # add more as you approve users
+]
+
+# ── Terminal colours ──────────────────────────────────────────────────────────
+USE_COLOUR = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+def _c(t, code): return f"\033[{code}m{t}\033[0m" if USE_COLOUR else t
+def BLUE(t):   return _c(t, "94")
+def GREEN(t):  return _c(t, "92")
+def YELLOW(t): return _c(t, "93")
+def BOLD(t):   return _c(t, "1")
+def DIM(t):    return _c(t, "2")
+def RED(t):    return _c(t, "91")
+
+def clear():  os.system("cls" if os.name == "nt" else "clear")
+def hr(n=56): print(DIM("─" * n))
+
+def section(num, title, sub=""):
+    print(); hr()
+    print(BOLD(BLUE(f"  {num}   {title}")))
+    if sub: print(DIM(f"      {sub}"))
+    hr(); print()
+
+def wrap(text, width=54, indent="  "):
+    return "\n".join(indent + ln for ln in textwrap.wrap(text, width))
+
+def ask(prompt, default="", required=True, hint=""):
+    if hint: print(DIM(f"  ↳ {hint}"))
+    label = f"  {BOLD(prompt)}"
+    if default: label += DIM(f"  [{default}]")
+    label += " : "
+    while True:
+        val = input(label).strip()
+        if val: return val
+        if default: return default
+        if required: print(RED("  Required — please enter a value."))
+        else: return ""
+
+def ask_choice(prompt, options, default=None):
+    print(f"\n  {BOLD(prompt)}")
+    for i, (key, label) in enumerate(options, 1):
+        dot = GREEN("●") if (default and key == default) else DIM("○")
+        print(f"  {dot} {DIM(str(i)+'.')} {label}")
+    print()
+    while True:
+        raw = input("  Enter number : ").strip()
+        if not raw and default: return default
+        if raw.isdigit() and 1 <= int(raw) <= len(options):
+            return options[int(raw)-1][0]
+        print(RED("  Please enter a number from the list."))
+
+def ask_multiline(prompt, hint="", max_chars=1500):
+    print(f"\n  {BOLD(prompt)}")
+    if hint: print(DIM(f"  ↳ {hint}"))
+    print(DIM("  Press Enter twice on an empty line when done."))
+    print()
+    lines, blanks = [], 0
+    while True:
+        line = input("  ")
+        if line == "":
+            blanks += 1
+            if blanks >= 2: break
+            lines.append(line)
+        else:
+            blanks = 0
+            lines.append(line)
+    return "\n".join(lines).strip()[:max_chars]
+
+
+# ── Community registration ────────────────────────────────────────────────────
+def register(name, email, phone, linkedin, niche, licence_key):
+    payload = {
+        "name": name, "email": email, "phone": phone,
+        "linkedin": linkedin, "niche": niche,
+        "licence_key": licence_key,
+        "date": datetime.date.today().isoformat(),
+        "source": "zack_setup_wizard",
+    }
+    # Always save locally
+    try:
+        path = "zack_users.json"
+        users = json.load(open(path)) if os.path.exists(path) else []
+        users.append(payload)
+        json.dump(users, open(path, "w"), indent=2)
+    except Exception:
+        pass
+    # Post to webhook if configured
+    if HAS_REQUESTS and REGISTRATION_WEBHOOK:
+        try: requests.post(REGISTRATION_WEBHOOK, json=payload, timeout=8)
+        except Exception: pass
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WIZARD
+# ══════════════════════════════════════════════════════════════════════════════
+def main():
+    clear()
+    print()
+    print(BOLD(BLUE("  ╔══════════════════════════════════════════════════════╗")))
+    print(BOLD(BLUE("  ║       ZACK.AI — COMMENTING AGENT SETUP WIZARD       ║")))
+    print(BOLD(BLUE("  ╚══════════════════════════════════════════════════════╝")))
+    print()
+    print(wrap("This wizard personalises Zack to sound exactly like you."))
+    print(wrap("Takes 2 minutes. Your zack_config.py is created automatically."))
+    print()
+    input(DIM("  Press Enter to begin..."))
+
+    d = {}  # data dict
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 0 — Licence Key
+    # ══════════════════════════════════════════════════════════════════════════
+    section("🔑", "LICENCE KEY",
+            "Your key was shown on the registration confirmation page.")
+
+    print(wrap("You cannot proceed without a valid licence key. "
+               "If you don't have one, go back to the registration form."))
+    print()
+
+    for attempt in range(3):
+        key = input(f"  {BOLD('Enter your licence key')} : ").strip().upper()
+        if key in VALID_KEYS:
+            d["licence_key"] = key
+            print(GREEN(f"  ✓ Key valid — welcome to Zack.ai"))
+            break
+        else:
+            remaining = 2 - attempt
+            if remaining > 0:
+                print(RED(f"  ✗ Invalid key. {remaining} attempt(s) remaining."))
+            else:
+                print(RED("  ✗ No valid key entered."))
+                print()
+                print(wrap("If you believe this is an error, reply to your "
+                           "access email or message Clinton Okhai on LinkedIn."))
+                print()
+                sys.exit(1)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 1 — Community Registration
+    # ══════════════════════════════════════════════════════════════════════════
+    section("🤝", "1 / 5   REGISTER YOUR ACCESS",
+            "Unlocks your Telegram community invite.")
+
+    print(wrap("30 seconds. Your details are only used to manage your "
+               "Zack licence and send your community invite."))
+    print()
+
+    d["reg_name"]     = ask("Your full name")
+    d["reg_email"]    = ask("Your email address",
+                             hint="Your Telegram community invite arrives here")
+    d["reg_phone"]    = ask("WhatsApp / phone number", required=False,
+                             hint="Optional — for support only")
+    d["reg_linkedin"] = ask("Your LinkedIn URL", required=False,
+                             hint="Optional — e.g. https://linkedin.com/in/yourname")
+    d["reg_niche"]    = ask("Your niche in one line",
+                             hint="e.g. business coaching, B2B consulting, recruiting")
+
+    print()
+    print(DIM("  Registering your access..."))
+    register(
+        name=d["reg_name"], email=d["reg_email"], phone=d.get("reg_phone",""),
+        linkedin=d.get("reg_linkedin",""), niche=d["reg_niche"],
+        licence_key=d["licence_key"]
+    )
+    print(GREEN("  ✓ Registered. Community invite will arrive at your email."))
+    print()
+    input(DIM("  Press Enter to continue..."))
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 2 — Identity
+    # ══════════════════════════════════════════════════════════════════════════
+    section("👤", "2 / 5   WHO YOU ARE",
+            "Zack signs off as you. Get this right.")
+
+    d["full_name"]  = ask("Your full name", default=d["reg_name"])
+    d["first_name"] = ask("First name only",
+                           default=d["full_name"].split()[0],
+                           hint="Used in sign-offs")
+    d["title"]      = ask("Your title / role", default="Founder",
+                           hint="e.g. Founder, CEO, Coach, Consultant")
+    d["company"]    = ask("Company or brand", required=False,
+                           hint="Leave blank if independent")
+    d["linkedin"]   = ask("Your LinkedIn URL",
+                           default=d.get("reg_linkedin",""),
+                           hint="e.g. https://linkedin.com/in/yourname")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 3 — API Keys
+    # ══════════════════════════════════════════════════════════════════════════
+    section("⚙️", "3 / 5   YOUR API KEYS",
+            "Zack needs these to generate comments and log them.")
+
+    print(wrap("Groq is free. Sign up at console.groq.com → API Keys."))
+    print()
+    print(DIM("  Google Sheet ID — open your sheet in a browser:"))
+    print(DIM("  docs.google.com/spreadsheets/d/ → COPY THIS PART ← /edit"))
+    print()
+
+    d["groq_key"]      = ask("Groq API Key", hint="Starts with 'gsk_'")
+    d["spreadsheet_id"]= ask("Google Spreadsheet ID",
+                              hint="The long string from your sheet URL")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 4 — Audience & Regions
+    # ══════════════════════════════════════════════════════════════════════════
+    section("🎯", "4 / 5   YOUR AUDIENCE & REGIONS",
+            "Who does Zack comment for? Who is watching your LinkedIn?")
+
+    d["niche"]    = ask("Your niche / industry",
+                         default=d["reg_niche"],
+                         hint="e.g. startup investing, executive coaching, B2B SaaS, recruiting")
+    d["audience"] = ask("Describe your LinkedIn audience in one sentence",
+                         hint="Who reads your content and follows you? "
+                              "e.g. African startup founders and early-stage investors")
+    d["regions"]  = ask("Target regions (comma-separated)",
+                         default="Nigeria, Kenya, Ghana, South Africa, Africa",
+                         hint="Where your audience is based")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 5 — Voice
+    # ══════════════════════════════════════════════════════════════════════════
+    section("🗣️", "5 / 5   YOUR COMMENTING VOICE",
+            "The most important section. Makes Zack sound like you, not a bot.")
+
+    print(wrap("Zack reads each post type — funny, emotional, intellectual, "
+               "achievement, opinion — and matches the energy. These settings "
+               "control how it does that in your voice specifically."))
+    print()
+
+    # Tone
+    d["tone"] = ask_choice("Your natural tone when commenting", [
+        ("warm",       "Warm and direct — genuine, peer-to-peer, not corporate"),
+        ("sharp",      "Sharp and punchy — confident, short, opinionated"),
+        ("thoughtful", "Thoughtful — reflective, adds depth without lecturing"),
+        ("witty",      "Witty — dry humour, observational, makes people read twice"),
+    ], default="warm")
+
+    # Gender
+    print()
+    d["gender"] = ask_choice("Your gender (affects natural phrasing in comments)", [
+        ("male",    "Male"),
+        ("female",  "Female"),
+        ("neutral", "Prefer not to specify"),
+    ], default="male")
+
+    # Never say
+    print()
+    d["never_say"] = ask(
+        "Phrases you NEVER use (comma-separated)",
+        default="resonates, great post, so inspiring, love this, couldn't agree more, "
+                "well said, this landed, unpacking, nuanced, mindset, journey, game-changer, "
+                "impactful, hope this finds you well, synergies, leverage",
+        required=False,
+        hint="Hard-banned — Zack will never use these in your comments"
+    )
+
+    # Always say
+    print()
+    d["always_say"] = ask(
+        "Phrases or words that sound like you (comma-separated)",
+        required=False,
+        hint="e.g. 'straight with you', 'genuinely', 'the honest version'"
+    )
+
+    # Real comment examples
+    print()
+    print(BOLD("  Paste 2–3 LinkedIn comments you've actually written."))
+    print(DIM("  ↳ Pull real ones from your activity. These are your voice reference."))
+    print(DIM("    Go to a post you commented on → copy your comment → paste it here."))
+    print(DIM("    Real examples matter far more than any description you write."))
+    print()
+    d["comment_examples"] = ask_multiline(
+        "Your real comment examples",
+        hint="Paste them here. Press Enter twice when done."
+    )
+
+    # Comments per run
+    print()
+    d["max_comments"] = ask_choice("Max comments per run", [
+        ("15", "15 — Conservative (newer account)"),
+        ("25", "25 — Standard (recommended)"),
+        ("35", "35 — High volume (established account)"),
+    ], default="25")
+
+    d["post_recency"] = ask_choice("Only comment on posts from the last...", [
+        ("48",  "48 hours — very recent only"),
+        ("72",  "72 hours — last 3 days (recommended)"),
+        ("120", "120 hours — last 5 days"),
+    ], default="72")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # BUILD CONFIG
+    # ══════════════════════════════════════════════════════════════════════════
+    print()
+    print(DIM("  Building your zack_config.py..."))
+
+    tone_desc = {
+        "warm":       "Warm and direct. Peer-to-peer. Never corporate or performative.",
+        "sharp":      "Sharp and punchy. Confident. Short sentences. Opinionated but not combative.",
+        "thoughtful": "Thoughtful and measured. Adds depth without lecturing or moralising.",
+        "witty":      "Dry wit. Observational. The comment that makes people read twice.",
+    }.get(d["tone"], "Warm and direct.")
+
+    gender_note = {
+        "male":    "Male. Use natural male phrasing when appropriate.",
+        "female":  "Female. Use natural female phrasing when appropriate.",
+        "neutral": "Gender neutral phrasing throughout.",
+    }.get(d["gender"], "")
+
+    never_list  = [p.strip() for p in d["never_say"].split(",")  if p.strip()]
+    always_list = [p.strip() for p in (d.get("always_say") or "").split(",") if p.strip()]
+
+    never_block  = "\n".join(f"- {p}" for p in never_list) \
+                   or "- resonates\n- great post\n- this landed\n- so inspiring"
+    always_block = "\n".join(f"- {p}" for p in always_list) \
+                   or "(not specified — draw from real comment examples below)"
+
+    examples_block = d["comment_examples"] or "(No examples provided.)"
+
+    config = f'''"""
+Zack.ai — Commenting Agent Config
+=====================================
+User    : {d["full_name"]}
+Niche   : {d["niche"]}
+Created : {datetime.date.today().isoformat()}
+Licence : {d["licence_key"]}
+
+Generated by zack_setup.py
+To regenerate: python zack_setup.py
+"""
+
+# ── IDENTITY ──────────────────────────────────────────────────────────────────
+CLIENT_NAME       = "{d["full_name"]}"
+CLIENT_FIRST_NAME = "{d["first_name"]}"
+CLIENT_TITLE      = "{d["title"]}"
+CLIENT_COMPANY    = "{d.get("company", "")}"
+CLIENT_LINKEDIN   = "{d["linkedin"]}"
+
+# ── API KEYS ──────────────────────────────────────────────────────────────────
+GROQ_API_KEY            = "{d["groq_key"]}"
+GOOGLE_CREDENTIALS_PATH = "google_credentials.json"
+SPREADSHEET_ID          = "{d["spreadsheet_id"]}"
+
+# ── SHEET ─────────────────────────────────────────────────────────────────────
+SHEET_ENGAGEMENT = "Zacharia Engagement List"
+
+# ── COMMENTING SETTINGS ───────────────────────────────────────────────────────
+MAX_COMMENTS_PER_RUN = {d["max_comments"]}
+POST_RECENCY_HOURS   = {d["post_recency"]}
+
+# ── COMMENTING VOICE PROFILE ──────────────────────────────────────────────────
+# This is what makes comments sound like YOU — not a generic bot.
+
+COMMENTING_PLAYBOOK = """You write LinkedIn comments that make people stop, read twice, and reply.
+
+WHO YOU ARE:
+Writing on behalf of {d["full_name"]}.
+Title: {d["title"]}{f" at {d['company']}" if d.get("company") else ""}.
+Niche: {d["niche"]}
+Audience: {d["audience"]}
+Gender: {gender_note}
+
+YOUR TONE:
+{tone_desc}
+
+PHRASES YOU NEVER USE — these instantly signal AI or hollow thinking:
+{never_block}
+
+PHRASES AND WORDS THAT SOUND LIKE YOU:
+{always_block}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — READ THE POST TYPE FIRST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FUNNY / LIGHT
+→ Match the energy. Be wry or dry. Never add a lesson to a joke.
+→ Do NOT turn it serious. Do NOT add a takeaway.
+
+EMOTIONAL / PERSONAL
+→ Make them feel seen. Warm and specific. No insight-dropping.
+→ One genuine human line is worth ten generic ones.
+
+INTELLECTUAL / NEW IDEA
+→ Add depth. Sharpen the idea. Show the flip side.
+→ This is the only post type where a question is appropriate.
+
+HOW-TO / TACTICAL
+→ Validate the specific thing that actually works.
+→ Add one honest extra the post missed.
+
+ACHIEVEMENT / MILESTONE
+→ Short, genuine, reference the actual achievement — not generic congrats.
+
+OPINION / HOT TAKE
+→ Have a real view. Sharpen their argument or show the edge case where it breaks.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — PICK ONE MOVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+A. Land the unsaid truth — say what they implied but didn't fully say
+B. The flip — show the other side (not a fight, a reveal)
+C. A lived moment — one specific real thing from experience (1–2 sentences max)
+D. Dry observation — wry reframe, let it land without explaining it
+E. Make them feel seen — reflect back what made the post worth reading
+F. Sharpen it — take their idea and make it more precise or more useful
+
+Questions in only ~40% of comments. Only for intellectual posts.
+Never as a default ending. Never "what do you think?"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMAT — NON-NEGOTIABLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Each thought on its OWN line. Blank line between every line.
+
+Short punchy first line.
+
+Second line that builds or lands.
+
+Optional third line or question.
+
+Max 3 lines. No paragraphs. No walls of text. Ever.
+No hashtags. No emojis unless the post tone clearly earns one.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VOICE REFERENCE — REAL COMMENTS FROM THIS USER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Study these closely. Match their rhythm, their specificity, their length.
+
+{examples_block}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GUARDRAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Grief / loss / medical: 1-2 warm human lines. No lessons. No insights.
+- Pure product promo from someone else: SKIP
+- Political content: engage human or business angle only, never the politics
+- Nothing genuine to add: SKIP
+- If the comment would embarrass a thoughtful person: SKIP
+
+OUTPUT: Write ONLY the comment. Blank line between each line.
+If skipping: write exactly SKIP
+"""
+'''
+
+    with open("zack_config.py", "w", encoding="utf-8") as f:
+        f.write(config)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SUCCESS SCREEN
+    # ══════════════════════════════════════════════════════════════════════════
+    clear()
+    print()
+    print(BOLD(GREEN("  ╔══════════════════════════════════════════════════════╗")))
+    print(BOLD(GREEN("  ║           ✅  YOUR ZACK IS CONFIGURED               ║")))
+    print(BOLD(GREEN("  ╚══════════════════════════════════════════════════════╝")))
+    print()
+    print(wrap(f"zack_config.py has been created in this folder."))
+    print(wrap(f"Zack now knows your voice, tone, and audience."))
+    print()
+    hr()
+    print()
+    print(BOLD("  What to do next:"))
+    print()
+    print(f"  {GREEN('1.')}  {BOLD('chromedriver.exe')} must be in this folder")
+    print(f"       Open Chrome → {BLUE('chrome://settings/help')} → note version")
+    print(f"       Download match: googlechromelabs.github.io/chrome-for-testing")
+    print()
+    print(f"  {GREEN('2.')}  {BOLD('google_credentials.json')} must be in this folder")
+    print(f"       This was attached to your Zack access email")
+    print()
+    print(f"  {GREEN('3.')}  Right-click {BOLD('zack_install.bat')} → {BOLD('Run as administrator')}")
+    print(f"       Installs packages and creates Desktop shortcuts")
+    print()
+    print(f"  {GREEN('4.')}  Open your Google Sheet → go to the tab:")
+    print(f"       {BOLD('\"Zacharia Engagement List\"')}")
+    print(f"       Add people:  A = Name  |  B = LinkedIn URL  |  C = Notes")
+    print()
+    print(f"  {GREEN('5.')}  Double-click {BOLD('Zack – Engage (Comments)')} on your Desktop")
+    print(f"       Log into LinkedIn when Chrome opens. Zack starts automatically.")
+    print()
+    hr()
+    print()
+    print(BOLD(YELLOW("  📱  JOIN THE ZACK COMMUNITY")))
+    print()
+    print(wrap("Connect with other Zack users. Get installation help, "
+               "share your results, and get early access to new features."))
+    print()
+    print(f"  {BOLD(BLUE('→  Telegram:'))}  {TELEGRAM_LINK}")
+    print()
+    print(wrap("This link is private — for Zack users only. "
+               "Please do not share it publicly."))
+    print()
+    hr()
+    print()
+    print(DIM(f"  Config : {os.path.abspath('zack_config.py')}"))
+    print(DIM(f"  User   : {d['full_name']}"))
+    print(DIM(f"  Tone   : {d['tone']}  |  Gender: {d['gender']}"))
+    print(DIM(f"  Run    : {d['max_comments']} comments  |  "
+              f"Recency: {d['post_recency']}hrs"))
+    print()
+    print(wrap("Questions? Message Clinton Okhai on LinkedIn "
+               "or reply to your access email."))
+    print()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        print(YELLOW("\n  Cancelled. Run python zack_setup.py to try again."))
+        sys.exit(0)
