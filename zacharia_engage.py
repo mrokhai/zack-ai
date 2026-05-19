@@ -59,8 +59,8 @@ except Exception as e:
 POST_FRESH_MAX_HOURS = 6 # 0-6hrs = FRESH — comment first
 POST_RECENT_MAX_HOURS = 24 # 6-24hrs = RECENT — comment after fresh
                                    # 24+hrs = STALE — skip entirely
-POST_WINDOW_HRS = 2 # ±hrs around typical posting time
-POST_WINDOW_MIN_CONFIDENCE = 3 # data points needed before window filter activates
+POST_WINDOW_HRS = 6 # ±hrs around typical posting time
+POST_WINDOW_MIN_CONFIDENCE = 5 # data points needed before window filter activates
 
 SLOW_MODE = True
 
@@ -1063,10 +1063,10 @@ def run():
     n_off_window = 0
 
     for person in people:
-        # Gate 1: already done today
-        if already_commented_today(person, today):
-            n_done_today += 1
-            continue
+        # Gate 1: already done today - DISABLED to catch multiple posts
+        # if already_commented_today(person, today):
+        #     n_done_today += 1
+        #     continue
 
         # Gate 2: outside their posting window
         in_win, win_reason = in_posting_window(person, cur_hour)
