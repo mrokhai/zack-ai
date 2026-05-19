@@ -1063,10 +1063,12 @@ def run():
     n_off_window = 0
 
     for person in people:
-        # Gate 1: already done today - DISABLED to catch multiple posts
-        # if already_commented_today(person, today):
-        #     n_done_today += 1
-        #     continue
+        # ── Gate 1: already commented today? ────────────────────────
+        last_date = str(person.get("last_comment_date", "")).strip()
+        if last_date == today_str:
+            print(f"   → Already commented today — skipping")
+            already += 1
+            continue
 
         # Gate 2: outside their posting window
         in_win, win_reason = in_posting_window(person, cur_hour)
