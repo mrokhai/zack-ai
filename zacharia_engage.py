@@ -1,19 +1,21 @@
 """
-Zacharia — Zack.ai Commenting Agent for Users v5
+Zacharia — Zack.ai Commenting Agent for Users v6
 ==================================================
-WHAT'S NEW FROM v4 (user version):
-  - Session cursor tracking: every visited profile is stamped with today's datetime (col L)
-  - On next run: skips already-visited profiles, picks up from last stopping point
-  - Queue order: unvisited-today first (in list order) → visited-today profiles are skipped
-  - When entire list visited today: reports full-cycle complete, will restart fresh next run
-  - Natural day rollover: col L timestamps from yesterday auto-clear (different date)
-  - Two independent filters:
-      col G (Last Comment Date) → prevents double-commenting same post
-      col L (Session Visited)   → prevents re-scanning already-attempted profiles
-  - Removed duplicate function definitions that existed in v4
-  - Cleaner pre-filter logic and summary output
+WHAT'S NEW FROM v5 (user version):
+  - Complete playbook rewrite — per-tone instructions for every post type
+  - CELEBRATION posts: warm and specific, never analytical
+  - SARCASM posts: match the wit, play back the irony
+  - FUN/PLAYFUL posts: be playful, match the energy, land a joke
+  - RANT/FRUSTRATION posts: validate the specific thing, don't lecture
+  - QUESTION_TO_AUDIENCE posts: answer genuinely, add your own angle
+  - Questions end with ? — fixed bug that was stripping ? and replacing with .
+  - Pre-filter: rejects pure promos, job posts, polls, under-40-word posts before hitting AI
+  - Deeper post analysis: sarcasm, celebration, playful, rant, question-post detection
+  - Smarter relevance gate: only comments on posts with real substance
+  - Expanded banned phrase list — removes more LinkedIn corporate speak
+  - Session cursor tracking (from v5): unchanged
 
-Run: python zacharia_engage_user_v5.py
+Run: python zacharia_engage_user_v6.py
 
 Setup: Make sure zack_config.py exists with your keys. Run python zack_setup.py first.
 """
@@ -74,160 +76,437 @@ LIST_HEADERS = [
     "Typical Post Hour", # I  col 9
     "Post Confidence",   # J  col 10
     "Last Post Time",    # K  col 11
-    "Session Visited",   # L  col 12  ← NEW: datetime of last visit attempt today
+    "Session Visited",   # L  col 12
 ]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMMENTING INTELLIGENCE — ANTI-HALLUCINATION LAYER
+# COMMENTING INTELLIGENCE — v6 PLAYBOOK
 # ══════════════════════════════════════════════════════════════════════════════
 
-BASE_PLAYBOOK = """You write LinkedIn comments that sound like a smart friend texting after reading the post.
+BASE_PLAYBOOK = """You write LinkedIn comments that sound like a sharp, observant friend who actually read the post.
 
-ANTI-HALLUCINATION — MOST IMPORTANT:
-You will be given EXTRACTED FACTS from the post.
-Only reference things that appear in those facts or the post text.
-Never invent numbers, events, or claims not in the post.
+════════════════════════════════════════
+RULE 0 — READ THE POST BEFORE ANYTHING
+════════════════════════════════════════
+You will receive EXTRACTED FACTS and the FULL POST.
+Read both carefully. Identify:
+  1. What is the emotional tone? (celebrating, ranting, joking, reflecting, teaching, questioning)
+  2. What is the ONE thing they most want someone to notice?
+  3. What specific detail can you reference that proves you read it?
 
-CONTEXT RULE — DO NOT SKIP:
-Every comment MUST reference at least one specific detail from the post:
-- a number they mentioned
-- a phrase from their opening line
-- the core claim they made
-- a name or company they referenced
-If you cannot find something specific to reference, output SKIP.
+If you cannot find a specific detail worth referencing — output SKIP.
+Never comment on something generic. Never comment on the vibe alone.
 
-VOICE:
-- Talk like a human, not a coach. Use contractions, short sentences.
-- Be fun first. Light sarcasm is good. Dry observations land better than praise.
-- 95% of comments are statements. Questions only 5% of the time.
-- Make them feel seen by naming the specific thing they wrote.
+════════════════════════════════════════
+ANTI-HALLUCINATION — CRITICAL
+════════════════════════════════════════
+Only reference things that appear in the EXTRACTED FACTS or the post text.
+Never invent numbers, quotes, events, companies, or outcomes.
+If the post has no specific details — SKIP. Do not improvise.
 
-EXAMPLES OF GOOD (with context):
-"This is the part everyone pretends is easy"
-"Of course the 90 days worked, you actually showed up"
-"That's a brutal lesson to learn after raising $2M"
+════════════════════════════════════════
+READ THE POST TYPE — MATCH THE ENERGY
+════════════════════════════════════════
 
-EXAMPLES OF BAD (no context):
-"This resonates deeply" / "So true" / "Great insights"
+CELEBRATION / WIN (launched, hired, closed, raised, announced, milestone):
+→ Be warm and specific about the ACTUAL thing they achieved
+→ Name what they did, not what they are
+→ Short. 1-2 lines max.
+→ NEVER: drop a lesson, add unsolicited advice, reference your own experience
+→ Examples: "That client number after the year you had — well earned." 
+            "Closing that round quietly and then posting about it is so you."
 
-READ THE POST TYPE:
-FUNNY/LIGHT → match the joke, reference the specific funny bit
-PERSONAL → name what hit you specifically, 1-2 warm lines
-IDEA → sharpen their specific claim, use their words
-HOW-TO → reference their specific step, add what they missed
-WIN → congratulate the actual achievement they named
-EMOTIONAL → make them feel seen, specific and warm, no insight-dropping
+SARCASM / IRONY (rhetorical flip, "apparently", "turns out", self-aware joke):
+→ Match the wit. Don't explain the joke.
+→ Play the irony back from a different angle
+→ Keep it dry. One punch line.
+→ NEVER: take it literally, get earnest, over-explain
+→ Examples: "Turns out doing the work works."
+            "Wild concept. Someone should write a book."
 
-PICK ONE MOVE:
-A. Land the unsaid truth — say what they implied but didn't fully say
-B. The flip — show the other side (not a fight, a reveal)
-C. A lived moment — one tight specific real thing from experience (2 sentences max)
-D. Dry observation — wry reframe, let it land without explaining it
-E. Make them feel seen — reflect what made their post worth reading
-F. Sharpen it — take their idea and make it more precise or more useful
+FUN / PLAYFUL (lighthearted, memes, jokes, emoji-heavy, self-deprecating):
+→ Be playful. Match the energy.
+→ A well-placed callback, unexpected angle, or light dig lands better than a reaction
+→ NEVER: turn it serious, drop insights, be a LinkedIn coach about it
+→ Examples: "The confidence to post this. Respect."
+            "Plot twist nobody asked for but everyone needed."
 
-FORMAT:
-Line 1: short punchy reaction referencing their post
-[blank line]
-Line 2: specific observation using their detail
-[blank line]
-Line 3: optional
+RANT / FRUSTRATION (venting, calling something out, expressing irritation):
+→ Validate the SPECIFIC thing they named — don't generalise
+→ Add one tight observation that sharpens their point
+→ Do not tell them what to do or how to handle it
+→ NEVER: silver lining, "this is why I...", unsolicited advice
+→ Examples: "That specific thing is exhausting and everyone pretends it's fine."
+            "The fact that this still happens in 2025 says everything."
 
-Each line must end with a period, exclamation, or question mark.
-Max 3 lines. Never a paragraph.
-Only use a QUESTION for moves A, B, or F — and only when the post is intellectual
-or when the question will genuinely open the conversation further.
+QUESTION TO AUDIENCE (asking followers something directly):
+→ Actually answer the question — with your genuine take
+→ Be specific, not theoretical
+→ One concrete angle, not a list
+→ NEVER: ask another question back, write "great question!", be wishy-washy
+→ Example: If they ask "what's your unpopular opinion on cold outreach?" — give yours.
 
-BANNED PHRASES:
-resonates / this landed / so true / great post / thanks for sharing
-love this / well said / powerful / inspiring / couldn't agree more
-absolutely / unpacking / nuanced / framework / mindset / journey
-impactful / synergy / ecosystem / as a founder / game-changer / thoughts?
+REFLECTION / PERSONAL STORY (vulnerability, lesson from experience, something that happened):
+→ Make them feel seen by naming the SPECIFIC thing in their story
+→ 1-2 tight lines — warm, human, no platitudes
+→ NEVER: "this resonates", "so true", unsolicited insight, make it about you
+→ Examples: "That moment of realising you can't force the timing is underrated."
+            "The part about the co-founder call is the part people don't talk about."
 
-GUARDRAILS:
-- Grief/loss/medical: 1-2 warm human lines only — no insight, no lesson
-- Purely promotional: SKIP
-- Political: engage the human/business angle only, never the politics
-- Nothing genuine to add: SKIP
+IDEA / OPINION (strong claim, contrarian take, framework, argument):
+→ Engage the specific claim — sharpen it, add the flip, or add a real dimension
+→ Make the comment worth reading for EVERYONE who sees it, not just the author
+→ NEVER: just agree, just disagree without substance, restate their point
+→ Example: "The caveat is that this only works once you've done it badly first."
 
-OUTPUT: comment only, or SKIP"""
+HOW-TO / TACTICAL (tips, steps, process breakdown):
+→ Reference one specific step — either affirm it precisely or add what's missing
+→ One sharp observation, no recap
+→ NEVER: "great tips!", "number 3 is my favourite", generic affirmation
 
+════════════════════════════════════════
+PICK EXACTLY ONE MOVE
+════════════════════════════════════════
+A. The unsaid truth — what they implied but didn't fully say
+B. The flip — the other side of their point, revealed not argued
+C. A lived moment — one real, tight, specific thing from experience (2 lines max)
+D. Dry observation — wry reframe, lands without explaining itself
+E. Make them feel seen — reflect back the specific thing that made the post worth reading
+F. Sharpen it — take their idea and make it more precise, more useful, or more honest
+
+════════════════════════════════════════
+FORMAT — NON-NEGOTIABLE
+════════════════════════════════════════
+Max 3 lines. Each line is one sentence. Blank line between each.
+Every statement ends with a full stop or exclamation mark.
+Every question ends with a question mark.
+Never end a statement with a question mark.
+Never end a question with a full stop.
+Never write a paragraph — three separate punchy lines maximum.
+
+════════════════════════════════════════
+WHEN TO USE A QUESTION
+════════════════════════════════════════
+Questions are allowed for moves A, B, and F only.
+Only use a question when the post is intellectual or when the question genuinely opens something.
+Questions must end with a question mark — not a full stop.
+Max one question per comment. Never start AND end with a question.
+
+════════════════════════════════════════
+BANNED PHRASES — NEVER USE THESE
+════════════════════════════════════════
+resonates / this landed / so true / great post / thanks for sharing / love this
+well said / powerful / inspiring / couldn't agree more / absolutely / unpacking
+nuanced / framework / mindset / journey / impactful / synergy / ecosystem
+as a founder / as someone who / game-changer / thoughts? / what a post
+this is a reminder / couldn't have said it better / preach / facts / drop the mic
+100% this / needed to hear this / bookmarking this / saving this / so important
+the way you / I love how / this hit different / just what I needed / real talk
+authentic / vulnerable / brave / bold move / showing up / doing the work
+
+════════════════════════════════════════
+GUARDRAILS
+════════════════════════════════════════
+Grief / loss / medical emergency: 1-2 warm human lines only. No insight. No lesson.
+Pure promotional post (product + CTA only, no substance): SKIP
+Political content: engage the human or business angle only, never the politics
+Announcement with no context (just "excited to share"): SKIP
+Job posting: SKIP
+If nothing genuine comes to mind: SKIP — a skipped comment is always better than a generic one
+
+════════════════════════════════════════
+OUTPUT
+════════════════════════════════════════
+Write ONLY the comment. No preamble. No labels. No "Move:" or "Type:" prefix.
+Or output: SKIP
+"""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POST ANALYSIS — v6: richer tone detection
+# ══════════════════════════════════════════════════════════════════════════════
 
 def extract_post_facts(post_text):
+    """
+    Extracts structured facts from a post for grounding the AI prompt.
+    v6 adds: sarcasm, celebration, playful, rant, question-to-audience detection.
+    """
     facts = {
-        "numbers":        [],
-        "quotes":         [],
-        "first_line":     "",
-        "core_claim":     "",
-        "has_story":      False,
-        "has_list":       False,
-        "word_count":     len(post_text.split()),
-        "post_type_hint": "",
+        "numbers":           [],
+        "quotes":            [],
+        "first_line":        "",
+        "core_claim":        "",
+        "has_story":         False,
+        "has_list":          False,
+        "word_count":        len(post_text.split()),
+        "post_type_hint":    "",
+        # v6 additions
+        "is_celebration":    False,
+        "is_sarcastic":      False,
+        "is_playful":        False,
+        "is_rant":           False,
+        "is_question_post":  False,
+        "emoji_count":       0,
     }
+
     lines = [l.strip() for l in post_text.split('\n') if l.strip()]
     if lines:
         facts["first_line"] = lines[0][:150]
 
+    # Numbers and money
     numbers = re.findall(
         r'\$[\d,]+(?:\.\d+)?[KMBkm]?|'
+        r'£[\d,]+(?:\.\d+)?[KMBkm]?|'
+        r'€[\d,]+(?:\.\d+)?[KMBkm]?|'
         r'\d+(?:,\d{3})*(?:\.\d+)?%?(?:\s*(?:million|billion|thousand|k|m|b))?|'
         r'#\d+',
         post_text
     )
     facts["numbers"] = list(set(numbers))[:6]
 
+    # Quoted phrases
     quotes = re.findall(r'["\u201c\u201d][^"\u201c\u201d]{5,80}["\u201c\u201d]', post_text)
     facts["quotes"] = quotes[:3]
 
+    # Story markers
     story_markers = ["i was", "i remember", "last year", "last month",
-                     "when i", "years ago", "i met", "i built", "i failed"]
+                     "when i", "years ago", "i met", "i built", "i failed",
+                     "yesterday", "this morning", "a few weeks ago"]
     facts["has_story"] = any(m in post_text.lower() for m in story_markers)
-    facts["has_list"]  = bool(re.search(r'^\d+[\.\)]\s', post_text, re.MULTILINE))
+
+    # List markers
+    facts["has_list"] = bool(re.search(r'^\s*\d+[\.\)]\s', post_text, re.MULTILINE))
+
+    # Emoji count
+    emoji_pattern = re.compile(
+        "[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF"
+        "\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF"
+        "\U00002702-\U000027B0\U000024C2-\U0001F251]+",
+        flags=re.UNICODE
+    )
+    facts["emoji_count"] = len(emoji_pattern.findall(post_text))
 
     t = post_text.lower()
-    if any(w in t for w in ["😂", "lol", "haha", "funny", "joke"]):
-        facts["post_type_hint"] = "FUNNY/LIGHT"
-    elif any(w in t for w in ["lost", "grief", "died", "cancer", "struggle", "difficult"]):
-        facts["post_type_hint"] = "EMOTIONAL/PERSONAL"
-    elif any(w in t for w in ["raised", "funding", "closed", "launched", "hired", "excited to share"]):
-        facts["post_type_hint"] = "ACHIEVEMENT/MILESTONE"
-    elif any(w in t for w in ["how to", "step 1", "tips:", "here's what", "the secret"]):
-        facts["post_type_hint"] = "HOW-TO/TACTICAL"
-    elif facts["has_story"]:
-        facts["post_type_hint"] = "EMOTIONAL/PERSONAL"
 
+    # ── CELEBRATION / WIN detection ────────────────────────────────────────
+    celebration_markers = [
+        "excited to announce", "thrilled to share", "excited to share",
+        "we did it", "we closed", "we launched", "we hit", "we signed",
+        "officially", "just closed", "just launched", "just signed",
+        "we raised", "closed our", "proud to", "honoured to", "honored to",
+        "we're live", "we are live", "it's live", "it is live",
+        "just got", "just hired", "just joined", "joining the team",
+        "new chapter", "big news", "huge news", "milestone",
+        "1 year", "2 year", "3 year", "anniversary",
+        "first client", "first sale", "first hire", "sold out",
+        "number 1", "#1", "record", "all-time",
+    ]
+    facts["is_celebration"] = any(m in t for m in celebration_markers)
+
+    # ── SARCASM / IRONY detection ──────────────────────────────────────────
+    sarcasm_markers = [
+        "apparently", "turns out", "who knew", "shocking", "not surprising",
+        "plot twist", "controversial opinion", "hot take", "unpopular opinion",
+        "nobody talks about", "no one tells you", "they don't tell you",
+        "funny how", "funny that", "wild that", "crazy how", "interesting how",
+        "remind me why", "tell me why", "why does", "why do we",
+        "just learned", "just realised", "just realized",
+        "🙃", "😅", "😬", "🤡", "💀",
+    ]
+    facts["is_sarcastic"] = any(m in t for m in sarcasm_markers)
+
+    # ── FUN / PLAYFUL detection ────────────────────────────────────────────
+    playful_markers = [
+        "😂", "😆", "🤣", "lol", "haha", "lmao", "💀", "🫡",
+        "unpopular opinion", "controversial take", "nobody asked",
+        "raise your hand", "who else", "be honest", "ngl",
+        "not going to lie", "lowkey", "lowkey though",
+        "this is your sign", "sending this to", "tag someone",
+    ]
+    facts["is_playful"] = any(m in t for m in playful_markers)
+    if facts["emoji_count"] >= 4:
+        facts["is_playful"] = True
+
+    # ── RANT / FRUSTRATION detection ──────────────────────────────────────
+    rant_markers = [
+        "i'm tired of", "i am tired of", "fed up", "enough",
+        "stop telling", "stop asking", "please stop", "can we stop",
+        "why do people", "why does everyone", "the worst",
+        "drives me crazy", "drives me mad", "pet peeve",
+        "this needs to stop", "this has to stop", "genuinely frustrated",
+        "nobody talks about", "completely wrong", "so wrong",
+        "i'll say it", "i will say it", "unpopular opinion:",
+        "truth is", "honest truth", "hard truth",
+        "😤", "🤬", "😡",
+    ]
+    facts["is_rant"] = any(m in t for m in rant_markers)
+
+    # ── QUESTION TO AUDIENCE detection ────────────────────────────────────
+    question_post_markers = [
+        "what do you think", "what's your", "what is your",
+        "thoughts?", "agree or disagree", "yes or no",
+        "what would you", "how do you", "do you think",
+        "have you ever", "who else", "am i the only one",
+        "let me know", "drop your", "comment below",
+        "tell me in the comments",
+    ]
+    post_tail = t[-200:]
+    facts["is_question_post"] = (
+        any(m in t for m in question_post_markers) or
+        (post_tail.count('?') >= 1 and len(t) > 80)
+    )
+
+    # ── CORE CLAIM ────────────────────────────────────────────────────────
     sentences = re.split(r'(?<=[.!?])\s+', post_text)
     sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
     if sentences:
         facts["core_claim"] = sentences[0][:200]
 
+    # ── POST TYPE HINT — enriched ─────────────────────────────────────────
+    if facts["is_celebration"]:
+        facts["post_type_hint"] = "CELEBRATION/WIN"
+    elif facts["is_sarcastic"] and facts["is_playful"]:
+        facts["post_type_hint"] = "SARCASM/WIT"
+    elif facts["is_sarcastic"]:
+        facts["post_type_hint"] = "SARCASM/IRONY"
+    elif facts["is_playful"]:
+        facts["post_type_hint"] = "FUN/PLAYFUL"
+    elif facts["is_rant"]:
+        facts["post_type_hint"] = "RANT/FRUSTRATION"
+    elif facts["is_question_post"]:
+        facts["post_type_hint"] = "QUESTION_TO_AUDIENCE"
+    elif any(w in t for w in ["lost", "grief", "died", "cancer", "struggling",
+                               "difficult time", "hard time", "heartbroken"]):
+        facts["post_type_hint"] = "EMOTIONAL/PERSONAL"
+    elif facts["has_story"]:
+        facts["post_type_hint"] = "PERSONAL_STORY"
+    elif any(w in t for w in ["how to", "step 1", "tips:", "here's what",
+                               "the secret", "here are", "things i learned"]):
+        facts["post_type_hint"] = "HOW-TO/TACTICAL"
+    elif any(w in t for w in ["i think", "i believe", "unpopular", "controversial",
+                               "hot take", "opinion:", "the truth is"]):
+        facts["post_type_hint"] = "IDEA/OPINION"
+    else:
+        facts["post_type_hint"] = "GENERAL"
+
     return facts
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# POST RELEVANCE FILTER — v6: pre-AI gate
+# ══════════════════════════════════════════════════════════════════════════════
+
+def is_post_worth_commenting(post_text, facts):
+    """
+    Fast pre-filter before hitting the AI.
+    Returns (worth_commenting: bool, skip_reason: str).
+    Rejects low-value posts before burning API tokens.
+    """
+    t = post_text.lower().strip()
+    word_count = len(post_text.split())
+
+    # Too short to have substance
+    if word_count < 40:
+        return False, f"too short ({word_count} words)"
+
+    # Pure job posting
+    job_markers = [
+        "we're hiring", "we are hiring", "now hiring", "join our team",
+        "open role", "open position", "job opportunity", "we have an opening",
+        "apply now", "apply here", "send your cv", "send your resume",
+        "dm me your cv", "dm your resume", "link in bio to apply",
+        "hiring for a", "looking for a", "we need a",
+    ]
+    job_hit = sum(1 for m in job_markers if m in t)
+    if job_hit >= 2:
+        return False, "job posting"
+
+    # Pure promotional — product/service CTA with no personal substance
+    promo_markers = [
+        "link in bio", "link in comments", "comment below to get",
+        "dm me to get", "grab yours", "shop now", "buy now",
+        "limited spots", "limited time", "enrol now", "enroll now",
+        "sign up now", "register now", "book your spot",
+        "click the link", "swipe up", "check the link",
+    ]
+    promo_hits = sum(1 for m in promo_markers if m in t)
+    if promo_hits >= 2 and word_count < 80:
+        return False, "pure promotional post"
+
+    # Pure poll (just a question + vote options, no substance)
+    poll_markers = ["option a:", "option b:", "option 1:", "option 2:",
+                    "vote below", "poll:", "your vote:", "cast your vote"]
+    if any(m in t for m in poll_markers) and word_count < 60:
+        return False, "poll with no substance"
+
+    # Repost / share with no commentary
+    share_markers = [
+        "reposting this", "sharing this because", "worth resharing",
+        "credit:", "via:", "h/t:", "ht:", "originally posted by",
+    ]
+    if any(m in t for m in share_markers) and word_count < 50:
+        return False, "reshare with no original content"
+
+    # Generic motivational filler with no specific content
+    filler_markers = [
+        "have a blessed", "good morning linkedin", "happy monday",
+        "wishing everyone", "sending positive", "stay motivated",
+        "believe in yourself", "you got this", "keep going",
+    ]
+    filler_hits = sum(1 for m in filler_markers if m in t)
+    if filler_hits >= 2:
+        return False, "generic motivational filler"
+
+    return True, "ok"
+
+
 def build_grounded_prompt(post_text, person_name, person_notes, facts):
+    """
+    Build the AI prompt with grounding facts clearly structured.
+    v6: richer facts block including tone signals.
+    """
     facts_block = []
+
+    # Core content facts
     if facts["first_line"]:
         facts_block.append(f"Opening line: \"{facts['first_line']}\"")
     if facts["core_claim"] and facts["core_claim"] != facts["first_line"]:
         facts_block.append(f"Core claim: \"{facts['core_claim'][:150]}\"")
     if facts["numbers"]:
-        facts_block.append(f"Numbers in post: {', '.join(facts['numbers'][:4])}")
+        facts_block.append(f"Numbers/stats in post: {', '.join(facts['numbers'][:4])}")
     if facts["quotes"]:
-        facts_block.append(f"Quotes from post: {' | '.join(facts['quotes'][:2])}")
+        facts_block.append(f"Direct quotes: {' | '.join(facts['quotes'][:2])}")
     if facts["has_story"]:
-        facts_block.append("Post contains: a personal story")
+        facts_block.append("Post contains: a personal story or experience")
+    if facts["has_list"]:
+        facts_block.append("Post contains: a numbered list")
+
+    # Tone signals — tell the AI what energy to match
     if facts["post_type_hint"]:
-        facts_block.append(f"Post type: {facts['post_type_hint']}")
+        facts_block.append(f"Post type / tone: {facts['post_type_hint']}")
+    if facts["is_celebration"]:
+        facts_block.append("Tone signal: CELEBRATING A WIN — be warm and specific, no lessons")
+    if facts["is_sarcastic"]:
+        facts_block.append("Tone signal: SARCASTIC/IRONIC — match the wit, play back the irony")
+    if facts["is_playful"]:
+        facts_block.append("Tone signal: PLAYFUL/FUN — match the energy, land a joke or callback")
+    if facts["is_rant"]:
+        facts_block.append("Tone signal: VENTING/RANT — validate the specific thing, no advice")
+    if facts["is_question_post"]:
+        facts_block.append("Tone signal: ASKING AUDIENCE — actually answer the question they asked")
+    if facts["emoji_count"] >= 4:
+        facts_block.append(f"Tone signal: emoji-heavy post ({facts['emoji_count']} emojis) — lighter energy")
 
     facts_section = "\n".join(f"  • {f}" for f in facts_block)
 
     return (
         f"Post by: {person_name}\n"
         f"About them: {person_notes or 'not provided'}\n\n"
-        f"GROUNDING FACTS (only reference these):\n{facts_section}\n\n"
-        f"FULL POST:\n\"\"\"\n{post_text[:1800]}\n\"\"\"\n\n"
-        f"Write ONLY the comment (or SKIP). No preamble."
+        f"GROUNDING FACTS — only reference things that appear here or in the post:\n"
+        f"{facts_section}\n\n"
+        f"FULL POST TEXT:\n\"\"\"\n{post_text[:2000]}\n\"\"\"\n\n"
+        f"Write ONLY the comment (or SKIP). No preamble. No labels."
     )
 
 
@@ -243,6 +522,13 @@ def _parse_retry_after(err_str):
 
 def generate_comment(post_text, person_name, person_notes,
                      _model=None, _retries=0):
+    """
+    Generate a comment using the AI.
+    v6 fixes:
+    - Questions keep their ? — no longer stripped and converted to statements
+    - Richer banned phrase list
+    - Tighter quality guard
+    """
     if _retries >= 3:
         return None
 
@@ -259,67 +545,112 @@ def generate_comment(post_text, person_name, person_notes,
                 {"role": "system", "content": system},
                 {"role": "user",   "content": prompt},
             ],
-            temperature=0.92,
-            max_tokens=180,
+            temperature=0.88,
+            max_tokens=200,
         )
 
         comment = response.choices[0].message.content.strip().strip('"\'')
 
-        # ENFORCE 5% QUESTION RULE
-        if comment.endswith('?') and random.random() > 0.05:
-            comment = comment.rstrip('?').strip()
-            if not comment.endswith(('.', '!')):
-                comment += '.'
-
-        # FORCE FULL STOPS ON EVERY LINE
-        lines = [l.strip() for l in comment.split('\n\n') if l.strip()]
-        fixed = []
-        for line in lines:
-            line = line.strip()
-            if line and not line.endswith(('.', '!', '?')):
-                line += '.'
-            fixed.append(line)
-        comment = '\n\n'.join(fixed)
-
         if not comment or comment.upper().startswith("SKIP"):
             return None
 
-        # Strip leaked preamble
-        for prefix in ["STEP 1", "Post type:", "Type:", "FUNNY", "EMOTIONAL",
-                        "INTELLECTUAL", "HOW-TO", "ACHIEVEMENT", "OPINION", "Move:"]:
+        # ── Strip leaked preamble labels ──────────────────────────────────
+        for prefix in [
+            "STEP 1", "Post type:", "Type:", "FUNNY", "EMOTIONAL", "CELEBRATION",
+            "SARCASM", "RANT", "PLAYFUL", "INTELLECTUAL", "HOW-TO", "ACHIEVEMENT",
+            "OPINION", "Move:", "GENERAL", "FUN/", "QUESTION"
+        ]:
             if comment.startswith(prefix):
                 parts = comment.split("\n\n", 1)
                 if len(parts) > 1:
                     comment = parts[1].strip()
+                else:
+                    # Strip the label line
+                    comment = re.sub(r'^[A-Z][A-Z /\-]+:?\s*\n', '', comment).strip()
 
-        # Quality guard — banned phrases
+        # ── Fix punctuation on each line ──────────────────────────────────
+        # v6: Questions keep their ? — ONLY fix statements missing punctuation
+        lines = [l.strip() for l in comment.split('\n\n') if l.strip()]
+        fixed = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if line.endswith(('.', '!', '?')):
+                # Already properly punctuated — leave it alone
+                fixed.append(line)
+            else:
+                # Missing punctuation — determine if it reads as a question
+                is_question = (
+                    line.lower().startswith(("what ", "why ", "how ", "when ", "where ",
+                                            "who ", "is ", "are ", "do ", "does ",
+                                            "can ", "could ", "would ", "should "))
+                    and any(q_word in line.lower() for q_word in
+                            ["what", "why", "how", "when", "where", "who"])
+                )
+                line += '?' if is_question else '.'
+                fixed.append(line)
+
+        comment = '\n\n'.join(fixed)
+
+        if not comment:
+            return None
+
+        # ── Expanded banned phrase check ──────────────────────────────────
         banned = [
+            # Original list
             "resonates", "this landed", "so true", "great post",
             "thanks for sharing", "love this", "well said", "powerful",
             "inspiring", "couldn't agree more", "absolutely", "unpacking",
             "nuanced", "mindset", "journey", "impactful", "synergy",
             "ecosystem", "as a founder", "as someone", "what a ",
             "this is a reminder", "game-changer",
+            # v6 additions
+            "couldn't have said", "preach", "facts!", "drop the mic",
+            "100% this", "needed to hear", "bookmarking", "saving this",
+            "so important", "the way you", "this hit different",
+            "just what i needed", "real talk", "authentic", "vulnerable",
+            "brave of you", "bold move", "showing up", "doing the work",
+            "legend", "king", "queen", "icon", "💯",
+            "spot on", "nail on the head", "hit the nail",
+            "you nailed", "nailed it", "crushed it",
+            "this is gold", "this is fire", "fire post",
+            "underrated post", "underrated take",
+            "this deserves more", "more people need",
+            "everyone needs to read", "sharing this",
         ]
-        if any(p in comment.lower() for p in banned):
+        comment_lower = comment.lower()
+        if any(p in comment_lower for p in banned):
             return generate_comment(post_text, person_name, person_notes,
                                     _model=model, _retries=_retries + 1)
 
-        # Format: enforce line-by-line separation
+        # ── Format: ensure proper line breaks if AI returned a block ──────
         if "\n\n" not in comment and len(comment.split(". ")) >= 2:
-            sentences = [s.strip() for s in comment.replace(".\n", ". ").split(". ") if s.strip()]
-            formatted = []
-            for s in sentences:
-                if not s.endswith((".", "!", "?")):
-                    s += "."
-                formatted.append(s)
-            comment = "\n\n".join(formatted)
+            sentences = []
+            parts = re.split(r'(?<=[.!?])\s+(?=[A-Z])', comment)
+            for s in parts:
+                s = s.strip()
+                if s:
+                    sentences.append(s)
+            if len(sentences) > 1:
+                comment = "\n\n".join(sentences)
 
-        # Length guard
+        # ── Length guard ──────────────────────────────────────────────────
         words = comment.replace("\n", " ").split()
-        if len(words) < 5 or len(words) > 90:
+        if len(words) < 4:
             return generate_comment(post_text, person_name, person_notes,
                                     _model=model, _retries=_retries + 1)
+        if len(words) > 100:
+            # Trim to first 2 lines
+            trimmed_lines = comment.split("\n\n")[:2]
+            comment = "\n\n".join(trimmed_lines)
+            words = comment.replace("\n", " ").split()
+            if len(words) < 4:
+                return None
+
+        # ── Don't let it end with a comma or colon ────────────────────────
+        if comment.endswith((',', ':')):
+            comment = comment[:-1] + '.'
 
         return comment
 
@@ -463,9 +794,7 @@ def connect_sheets(max_retries=5):
                 ws.freeze(rows=1)
                 print(f"   Created sheet: '{ENGAGEMENT_LIST_SHEET}'")
 
-            # Ensure col L header exists (safe for existing sheets that pre-date v5)
             _ensure_session_col(ws)
-
             return ws
 
         except Exception as e:
@@ -478,10 +807,6 @@ def connect_sheets(max_retries=5):
 
 
 def _ensure_session_col(ws):
-    """
-    Adds the 'Session Visited' header in col L if it's missing.
-    Safe to call on existing sheets — won't overwrite data.
-    """
     try:
         headers = ws.row_values(1)
         if len(headers) < 12 or not headers[11].strip():
@@ -498,7 +823,7 @@ def load_engagement_list(ws):
             return []
         people = []
         for i, row in enumerate(all_rows[1:], start=2):
-            row = row + [""] * 13   # pad to 13 cols to safely read col L
+            row = row + [""] * 13
             name = (row[0] or "").strip()
             url  = (row[1] or "").strip().rstrip("/")
             if not name or not url or "/in/" not in url:
@@ -524,7 +849,7 @@ def load_engagement_list(ws):
                 "typical_hour":    typical_hour,
                 "confidence":      confidence,
                 "last_post_time":  (row[10] or "").strip(),
-                "session_visited": (row[11] or "").strip(),  # ← col L
+                "session_visited": (row[11] or "").strip(),
             })
         return people
     except Exception as e:
@@ -545,9 +870,7 @@ def update_row(ws, row_num, post_url, post_id, comment, status):
 
 
 def update_timing(ws, row_num, post_hour_utc, current_confidence, post_dt_str):
-    """Update the person's typical posting hour using circular mean."""
     try:
-        new_confidence = current_confidence + 1
         cur_val = ws.cell(row_num, 9).value or ""
         try:
             current_hour = int(cur_val)
@@ -567,7 +890,7 @@ def update_timing(ws, row_num, post_hour_utc, current_confidence, post_dt_str):
             new_hour = int((math.atan2(sin_a, cos_a) * 24 / (2 * math.pi)) % 24)
 
         ws.update_cell(row_num, 9,  str(new_hour))
-        ws.update_cell(row_num, 10, str(new_confidence))
+        ws.update_cell(row_num, 10, str(current_confidence + 1))
         ws.update_cell(row_num, 11, post_dt_str)
     except Exception as e:
         print(f"      Timing update error: {e}")
@@ -578,22 +901,11 @@ def update_timing(ws, row_num, post_hour_utc, current_confidence, post_dt_str):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def already_visited_this_session(person, today_str):
-    """
-    Returns True if we already loaded this profile's page today (any outcome).
-    Checks col L (session_visited) for today's date prefix.
-    This is separate from already_commented_today — visited means the browser
-    went to this profile; commented means we actually posted something.
-    """
     sv = person.get("session_visited", "") or ""
     return sv.startswith(today_str)
 
 
 def mark_session_visited(ws, row_num):
-    """
-    Writes the current UTC datetime to col L (Session Visited).
-    Called BEFORE any browser action on a profile — so even if we crash
-    mid-visit, the profile is still marked as attempted this session.
-    """
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     try:
         ws.update_cell(row_num, 12, now_str)
@@ -602,21 +914,15 @@ def mark_session_visited(ws, row_num):
 
 
 def already_commented_today(person, today_str):
-    """True if we already successfully commented on this person today."""
     last = person.get("last_date", "") or ""
     return last.startswith(today_str)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# WINDOW FILTER — pre-browser, pure Python
+# WINDOW FILTER
 # ══════════════════════════════════════════════════════════════════════════════
 
 def in_posting_window(person, current_hour_utc):
-    """
-    Returns (should_visit: bool, reason: str).
-    Before POST_WINDOW_MIN_CONFIDENCE data points: always visit (still learning).
-    After: only visit within ±POST_WINDOW_HRS of their typical hour.
-    """
     confidence   = person.get("confidence", 0)
     typical_hour = person.get("typical_hour")
 
@@ -707,7 +1013,6 @@ def get_latest_post(driver, profile_url):
                 );
                 var text = textEl ? textEl.innerText.trim() : '';
                 if (!text || text.length < 80 || text.split(' ').length < 10) continue;
-
                 var ts = '';
                 var timeEl = el.querySelector('time[datetime]');
                 if (timeEl) ts = timeEl.getAttribute('datetime') || '';
@@ -752,7 +1057,6 @@ def get_latest_post(driver, profile_url):
         if not text or len(text) < 80:
             return None
 
-        # Strip name echo at top of post
         lines = text.split("\n")
         if len(lines) >= 3 and lines[0].strip() == lines[1].strip():
             text = "\n".join(lines[2:]).strip()
@@ -764,7 +1068,6 @@ def get_latest_post(driver, profile_url):
             return None
 
         post_id = hashlib.md5(f"{username}:{text[:120]}".encode()).hexdigest()[:16]
-
         return {"text": text[:2500], "url": url, "post_id": post_id, "age_hours": age_hours}
 
     except Exception as e:
@@ -816,9 +1119,7 @@ def _click_comment_trigger(driver):
             continue
 
     clicked = driver.execute_script("""
-        var bar = document.querySelector(
-            '.social-actions, .feed-shared-social-action-bar, .social-action-bar'
-        );
+        var bar = document.querySelector('.social-actions, .feed-shared-social-action-bar');
         var scope = bar || document;
         var btns = Array.from(scope.querySelectorAll('button'));
         for (var b of btns) {
@@ -872,7 +1173,6 @@ def _submit_comment(driver):
         "button.comments-comment-box__submit-button",
         "button.comments-comment-texteditor__submitButton",
         ".comments-comment-box button[type='submit']",
-        ".comments-comment-texteditor button[type='submit']",
         "form button[type='submit']",
     ]:
         try:
@@ -884,29 +1184,25 @@ def _submit_comment(driver):
             continue
 
     submitted = driver.execute_script("""
-        var form = (
-            document.querySelector('.comments-comment-box') ||
-            document.querySelector('.comments-comment-texteditor') ||
-            document.body
-        );
+        var form = document.querySelector('.comments-comment-box') ||
+                   document.querySelector('.comments-comment-texteditor') ||
+                   document.body;
         var btns = Array.from(form.querySelectorAll('button'));
         for (var i = 0; i < btns.length; i++) {
             var b   = btns[i];
             var lbl = (b.getAttribute('aria-label') || '').toLowerCase().trim();
             var txt = (b.innerText || '').toLowerCase().trim();
             if (b.disabled) continue;
-            if (txt==='comment'||txt==='post'||txt==='post comment'||
-                lbl==='comment'||lbl==='post comment'||lbl==='add comment') {
-                b.click(); return 'clicked:' + txt;
+            if (txt==='comment'||txt==='post'||lbl==='comment'||lbl==='post comment') {
+                b.click(); return true;
             }
         }
         var primary = form.querySelector('button.artdeco-button--primary:not([disabled])');
-        if (primary) { primary.click(); return 'primary-btn'; }
-        return null;
+        if (primary) { primary.click(); return true; }
+        return false;
     """)
     if submitted:
         return True
-
     try:
         ActionChains(driver).key_down(Keys.CONTROL).send_keys(
             Keys.RETURN).key_up(Keys.CONTROL).perform()
@@ -957,17 +1253,18 @@ def post_comment(driver, post_url, comment_text):
 # ══════════════════════════════════════════════════════════════════════════════
 # COLOUR HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
-
 try:
     from colorama import Fore, Style, init as colorama_init
     colorama_init()
     def GREEN(t):  return Fore.GREEN  + str(t) + Style.RESET_ALL
     def YELLOW(t): return Fore.YELLOW + str(t) + Style.RESET_ALL
     def DIM(t):    return Style.DIM   + str(t) + Style.RESET_ALL
+    def CYAN(t):   return Fore.CYAN   + str(t) + Style.RESET_ALL
 except Exception:
     def GREEN(t):  return str(t)
     def YELLOW(t): return str(t)
     def DIM(t):    return str(t)
+    def CYAN(t):   return str(t)
 
 
 def age_label(hours):
@@ -977,23 +1274,36 @@ def age_label(hours):
     return DIM(f"{hours:.0f}h ago  — stale")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN — v5: session-cursor aware, single-pass, window-filtered
-# ══════════════════════════════════════════════════════════════════════════════
+def tone_label(facts):
+    """Returns a coloured tone indicator for the console."""
+    t = facts.get("post_type_hint", "")
+    if "CELEBRATION" in t:   return GREEN(f"🎉 {t}")
+    if "SARCASM"     in t:   return CYAN(f"🙃 {t}")
+    if "PLAYFUL"     in t:   return CYAN(f"😄 {t}")
+    if "RANT"        in t:   return YELLOW(f"😤 {t}")
+    if "QUESTION"    in t:   return CYAN(f"❓ {t}")
+    if "PERSONAL"    in t:   return YELLOW(f"💬 {t}")
+    if "HOW-TO"      in t:   return GREEN(f"📋 {t}")
+    if "IDEA"        in t:   return CYAN(f"💡 {t}")
+    return DIM(f"📄 {t}")
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MAIN — v6: smarter commenting with pre-filter and tone matching
+# ══════════════════════════════════════════════════════════════════════════════
 def run():
     now_utc  = datetime.now(timezone.utc)
     today    = now_utc.strftime("%Y-%m-%d")
     cur_hour = now_utc.hour
     name_display = CLIENT_FIRST_NAME or CLIENT_NAME or "Zack User"
 
-    print(f"\n{'='*58}")
-    print(f"  Zacharia — Commenting Agent v5 for Users")
+    print(f"\n{'='*60}")
+    print(f"  Zacharia — Commenting Agent v6 for Users")
     print(f"  Running for: {name_display}")
     print(f"  {now_utc.strftime('%Y-%m-%d %H:%M UTC')}  |  Max: {MAX_COMMENTS_PER_RUN} comments")
     print(f"  Fresh: 0-{POST_FRESH_MAX_HOURS}h  |  Recent: {POST_FRESH_MAX_HOURS}-{POST_RECENT_MAX_HOURS}h  |  Window: ±{POST_WINDOW_HRS}h")
-    print(f"  Mode: SESSION-CURSOR — picks up from last stopping point")
-    print(f"{'='*58}\n")
+    print(f"  Mode: SESSION-CURSOR + TONE-AWARE + PRE-FILTER")
+    print(f"{'='*60}\n")
 
     if not GROQ_API_KEY:
         print("❌ GROQ_API_KEY not set in zack_config.py")
@@ -1009,17 +1319,15 @@ def run():
         return
     print(f"   {len(people)} people in engagement list\n")
 
-    # ── FILTER 1: Already commented today (col G) — never revisit ─────────
+    # ── Filter 1: Already commented today ─────────────────────────────────
     commented_today = [p for p in people if already_commented_today(p, today)]
     not_commented   = [p for p in people if not already_commented_today(p, today)]
 
-    # ── FILTER 2: Session cursor (col L) ──────────────────────────────────
-    # Not-yet-visited profiles are the queue for this run.
-    # Visited-this-session profiles are skipped — they were already attempted.
+    # ── Filter 2: Session cursor ───────────────────────────────────────────
     not_yet_visited = [p for p in not_commented if not already_visited_this_session(p, today)]
     visited_session = [p for p in not_commented if already_visited_this_session(p, today)]
 
-    # ── FILTER 3: Posting window (in-memory — no browser yet) ─────────────
+    # ── Filter 3: Posting window ───────────────────────────────────────────
     in_window  = []
     off_window = []
     for p in not_yet_visited:
@@ -1029,55 +1337,48 @@ def run():
         else:
             off_window.append((p, reason))
 
-    # Sort: high-confidence known posters first, then learners
-    # (preserves list order within each tier — sequential pick-up)
     known    = [(p, r) for p, r in in_window if p.get("confidence", 0) >= POST_WINDOW_MIN_CONFIDENCE]
     learners = [(p, r) for p, r in in_window if p.get("confidence", 0) < POST_WINDOW_MIN_CONFIDENCE]
     to_visit = known + learners
 
-    # ── Full-cycle detection ───────────────────────────────────────────────
     full_cycle_complete = (len(not_yet_visited) == 0 and len(off_window) == 0)
 
     print(f"🕐 {now_utc.strftime('%H:%M UTC')}  |  {today}")
     print(f"   ✅ Commented today (done)       : {len(commented_today)}")
     print(f"   🔄 Visited this session (skip)  : {len(visited_session)}")
+    print(f"   ⏭  Off posting window           : {len(off_window)}")
     print(f"   🎯 Not yet visited this session : {len(not_yet_visited)}")
     print(f"      └─ In window (will visit)    : {len(in_window)}")
-    print(f"      └─ Off window (skip for now) : {len(off_window)}")
     print(f"   🔍 Queue this run               : {len(to_visit)}\n")
 
     if full_cycle_complete:
         print("   ✅ FULL CYCLE COMPLETE for today.")
-        print("   Every profile in the engagement list has been visited in this session.")
-        print("   The session cursor will auto-reset tomorrow — run again then.")
-        print("   To force a fresh cycle now: clear column L in the sheet.")
+        print("   Every profile visited. Resets automatically tomorrow.")
+        print("   To force a fresh cycle: clear column L in the sheet.")
         return
 
     if not to_visit:
         print("   Nothing to visit this run.")
         if off_window:
             earliest_open = None
-            for p, reason in off_window:
+            for p, _ in off_window:
                 th = p.get("typical_hour")
                 if th is not None:
                     open_h = (th - POST_WINDOW_HRS) % 24
                     if earliest_open is None or open_h < earliest_open:
                         earliest_open = open_h
             if earliest_open is not None:
-                print(f"   Some profiles off-window — next window opens around {earliest_open:02d}:00 UTC")
-            else:
-                print(f"   {len(off_window)} profiles outside their posting window — try later.")
-        else:
-            print("   All unvisited profiles are outside their posting windows.")
+                print(f"   Next window opens around {earliest_open:02d}:00 UTC")
         return
 
     # ── OPEN BROWSER ──────────────────────────────────────────────────────
-    driver     = create_driver()
-    commented  = 0
-    no_post    = 0
-    already    = 0
-    stale      = 0
-    unsuitable = 0
+    driver    = create_driver()
+    commented = 0
+    no_post   = 0
+    already   = 0
+    stale     = 0
+    unsuitable   = 0
+    pre_filtered = 0
     n_visited_this_run = 0
 
     try:
@@ -1085,13 +1386,13 @@ def run():
             print("❌ Login timed out — stopping")
             return
 
-        print(f"\n{'─'*58}")
-        print(f"🔍 Visiting {len(to_visit)} profiles — picking up from session cursor...\n")
+        print(f"\n{'─'*60}")
+        print(f"🔍 Visiting {len(to_visit)} profiles...\n")
 
         for person, win_reason in to_visit:
             if commented >= MAX_COMMENTS_PER_RUN:
                 print(f"\n   ✅ Limit reached ({MAX_COMMENTS_PER_RUN} comments) — stopping.")
-                print(f"   Next run will continue from profile {person['name']} onward.")
+                print(f"   Next run continues from: {person['name']}")
                 break
 
             name  = person["name"]
@@ -1101,15 +1402,13 @@ def run():
 
             print(f"  {name}  [{win_reason}]")
 
-            # ── MARK AS VISITED IMMEDIATELY (before any browser work) ──────
-            # Session cursor: even if we crash mid-visit, profile won't
-            # be re-visited in the same session.
+            # ── Mark visited BEFORE browser (session cursor) ───────────────
             mark_session_visited(ws, person["row"])
             n_visited_this_run += 1
 
             # ── Browser health check ───────────────────────────────────────
             if not is_driver_alive(driver):
-                print(f"   ⚠️  Browser crashed — restarting...")
+                print(f"   ⚠  Browser crashed — restarting...")
                 try:
                     driver.quit()
                 except Exception:
@@ -1126,9 +1425,9 @@ def run():
                 post = get_latest_post(driver, url)
             except Exception as e:
                 err = str(e).lower()
-                if any(x in err for x in ["connectionreset", "10054", "invalid session",
-                                           "no such window", "connection aborted"]):
-                    print(f"   ⚠️  Browser crashed — restarting...")
+                if any(x in err for x in ["connectionreset","10054","invalid session",
+                                           "no such window","connection aborted"]):
+                    print(f"   ⚠  Browser crashed — restarting...")
                     try:
                         driver.quit()
                     except Exception:
@@ -1160,15 +1459,12 @@ def run():
             except Exception:
                 pass
 
-            # ── Already commented on this exact post ───────────────────────
+            # ── Never comment twice on the same post ───────────────────────
             if post_id == person.get("last_post_id", ""):
-                print(f"   → Already commented on this post")
+                print(f"   → Already commented on this exact post — skipping")
                 already += 1
                 pause(1, 2)
                 continue
-
-            print(f"   → {len(post['text'].split())} words | {age_label(age_h)}")
-            print(f"   → '{post['text'][:80]}...'")
 
             # ── Age gate ───────────────────────────────────────────────────
             if age_h > POST_RECENT_MAX_HOURS:
@@ -1177,6 +1473,20 @@ def run():
                 update_row(ws, person["row"], post["url"], post_id, "", "stale_skipped")
                 pause(1, 2)
                 continue
+
+            # ── v6 PRE-FILTER: check if post is worth commenting on ────────
+            facts = extract_post_facts(post["text"])
+            worth_it, skip_reason = is_post_worth_commenting(post["text"], facts)
+            if not worth_it:
+                print(f"   → Pre-filter: {skip_reason} — skipping without AI call")
+                update_row(ws, person["row"], post["url"], post_id, "", f"pre_filtered:{skip_reason}")
+                pre_filtered += 1
+                pause(1, 2)
+                continue
+
+            # ── Show what we detected ──────────────────────────────────────
+            print(f"   → {len(post['text'].split())} words | {age_label(age_h)} | {tone_label(facts)}")
+            print(f"   → '{post['text'][:80]}...'")
 
             # ── Generate comment ───────────────────────────────────────────
             print(f"   → Generating comment...")
@@ -1190,9 +1500,9 @@ def run():
                 continue
 
             freshness = "🔥 FRESH" if age_h <= POST_FRESH_MAX_HOURS else "⏱ RECENT"
-            print(f"   → [{freshness}] {comment[:75]}...")
+            print(f"   → [{freshness}] {comment[:80]}...")
 
-            # ── Post comment immediately ───────────────────────────────────
+            # ── Post comment ───────────────────────────────────────────────
             print(f"   → Posting...")
             try:
                 success = post_comment(driver, post["url"], comment)
@@ -1211,33 +1521,31 @@ def run():
             pause(10, 16)
 
         # ── Summary ────────────────────────────────────────────────────────
-        remaining_unvisited = len(not_yet_visited) - n_visited_this_run
-        print(f"{'='*58}")
-        print(f"✅ RUN COMPLETE")
+        remaining = len(not_yet_visited) - n_visited_this_run
+        print(f"{'='*60}")
+        print(f"✅ RUN COMPLETE — v6")
         print(f"   Comments posted           : {commented}")
         print(f"   Profiles visited this run : {n_visited_this_run}")
+        print(f"   Pre-filtered (no AI used) : {pre_filtered}")
         print(f"   No post found             : {no_post}")
-        print(f"   Already commented (post)  : {already}")
+        print(f"   Already on this post      : {already}")
         print(f"   Stale (>{POST_RECENT_MAX_HOURS}h)              : {stale}")
-        print(f"   Unsuitable                : {unsuitable}")
+        print(f"   Unsuitable (AI skipped)   : {unsuitable}")
         print(f"")
-        print(f"   Session status:")
+        print(f"   Session cursor:")
         print(f"   Already commented today   : {len(commented_today)}")
         print(f"   Visited this session      : {len(visited_session) + n_visited_this_run}")
-        print(f"   Still unvisited today     : {max(0, remaining_unvisited)}")
+        print(f"   Still unvisited today     : {max(0, remaining)}")
         print(f"   Off posting window        : {len(off_window)}")
 
-        if remaining_unvisited > 0:
-            print(f"\n   ▶  Run again to continue from where this stopped.")
-            print(f"      {remaining_unvisited} profiles still unvisited this session.")
-        elif full_cycle_complete or (remaining_unvisited <= 0 and len(off_window) == 0):
-            print(f"\n   ✅ Full cycle complete — all profiles visited today.")
-            print(f"      Session cursor will auto-reset tomorrow.")
+        if remaining > 0:
+            print(f"\n   ▶  Run again — {remaining} profiles still unvisited this session.")
+        elif len(off_window) > 0:
+            print(f"\n   ⏱  {len(off_window)} profiles off-window — run later to catch them.")
         else:
-            print(f"\n   ⏱  {len(off_window)} profiles outside their posting window.")
-            print(f"      Run again later to catch them when they're active.")
+            print(f"\n   ✅ Full cycle complete. Resets tomorrow.")
 
-        print(f"{'='*58}\n")
+        print(f"{'='*60}\n")
 
     finally:
         try:
