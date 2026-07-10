@@ -61,6 +61,15 @@ EMAIL_ADDRESS = get("EMAIL_ADDRESS", "")
 OPERATING_SYSTEM = get("OPERATING_SYSTEM", "Windows 10 or 11")
 NOTES = get("NOTES", "")
 
+# ── Offer (Section 6) ─────────────────────────────────────────────────────────
+OFFER_NAME = get("OFFER_NAME", "")
+OFFER_ONE_LINER = get("OFFER_ONE_LINER", "")
+OFFER_OUTCOME = get("OFFER_OUTCOME", "")
+OFFER_DELIVERABLES = get("OFFER_DELIVERABLES", [])
+OFFER_DIFFERENTIATOR = get("OFFER_DIFFERENTIATOR", "")
+OFFER_AVOID = get("OFFER_AVOID", [])
+OFFER_SIGNALS = get("OFFER_SIGNALS", [])
+
 # ── Sheet ─────────────────────────────────────────────────────────────────────
 SHEET_ENGAGEMENT = get("SHEET_ENGAGEMENT", "Zacharia Engagement List")
 
