@@ -540,6 +540,56 @@ If skipping: write exactly SKIP
                "or reply to your access email."))
     print()
 
+    
+    # ══════════════════════════════════════════════
+    # MASTER DOCUMENT AUTO-LOADER
+    # ══════════════════════════════════════════════════════════════════════
+    """
+    Hardcoded loader: If zack_master.py exists in this folder, merge its values.
+    This allows rich onboarding data to override basic config automatically.
+    All Zack functions still import zack_config.py — they get merged data automatically.
+    """
+
+    import os
+    import importlib.util
+
+    _master_path = os.path.join(os.path.dirname(__file__), "zack_master.py")
+
+    if os.path.exists(_master_path):
+        try:
+            spec = importlib.util.spec_from_file_location("zack_master", _master_path)
+            master = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(master)
+
+            # Override with master values — only if they exist and aren't empty
+            _fields = [
+                'FULL_NAME', 'CLIENT_TITLE', 'CLIENT_COMPANY', 'CLIENT_LINKEDIN',
+                'ONE_SENTENCE', 'DIFFERENTIATOR', 'PERFECT_CLIENT', 'CLIENT_PROBLEM',
+                'CLIENT_LANGUAGE', 'TARGET_AUDIENCE', 'TARGET_GEOGRAPHY',
+                'MESSAGE_EXAMPLES', 'POST_EXAMPLES', 'NEVER_USE', 'ALWAYS_USE',
+                'TONE', 'HUMOUR', 'GREETING_STYLE', 'PRIMARY_GOAL',
+                'CONVERSATIONS_PER_WEEK', 'FIRST_REPLY_LINE', 'NEVER_DO',
+                'EMAIL_ADDRESS', 'OPERATING_SYSTEM', 'NOTES'
+            ]
+
+            for field in _fields:
+                if hasattr(master, field):
+                    val = getattr(master, field)
+                    if val: # Only override if not empty
+                        globals()[field] = val
+
+            # Map FULL_NAME to CLIENT_NAME for backward compatibility
+            if hasattr(master, 'FULL_NAME') and master.FULL_NAME:
+                CLIENT_NAME = master.FULL_NAME
+
+            print("✅ Master Document loaded — using rich client profile")
+
+        except Exception as e:
+            print(f"⚠ Could not load zack_master.py: {e}")
+            print(" Falling back to basic zack_config.py values")
+    else:
+        print("ℹ No Master Document found — using basic config only")
+    
 
 if __name__ == "__main__":
     try:
